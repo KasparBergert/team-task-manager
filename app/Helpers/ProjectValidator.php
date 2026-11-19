@@ -2,4 +2,14 @@
 
 namespace App\Helpers;
 
-class ProjectValidator {}
+use Illuminate\Support\Facades\Validator;
+
+class ProjectValidator
+{
+    public static function id(string $value): int
+    {
+        Validator::make(['projectId' => $value], ['projectId' => ['required', 'integer', 'min:1']])->validate();
+
+        return (int) $value;
+    }
+}

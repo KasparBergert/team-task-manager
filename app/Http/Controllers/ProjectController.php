@@ -2,44 +2,90 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\ProjectValidator;
+use App\Helpers\UserValidator;
+use App\Services\ProjectService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 // multi tenant controller
 class ProjectController extends Controller
 {
+    public function __construct(private readonly ProjectService $service) {}
+
     public function listProjects(Request $request): Response
     {
+        $this->service->listProjects(
+            (int) $request->user()->getKey(),
+        );
+
         return response()->noContent(501);
     }
 
     public function createProject(Request $request): Response
     {
+        $data = $request->validate(['name' => ['required', 'string', 'max:255']]);
+
+        $this->service->createProject(
+            (int) $request->user()->getKey(),
+            $data['name'],
+        );
+
         return response()->noContent(501);
     }
 
-    public function showProject(Request $request, int $projectId): Response
+    public function showProject(Request $request, string $projectId): Response
     {
+        $this->service->showProject(
+            (int) $request->user()->getKey(),
+            ProjectValidator::id($projectId),
+        );
+
         return response()->noContent(501);
     }
 
-    public function updateProject(Request $request, int $projectId): Response
+    public function updateProject(Request $request, string $projectId): Response
     {
+        $data = $request->validate(['name' => ['required', 'string', 'max:255']]);
+
+        $this->service->updateProject(
+            (int) $request->user()->getKey(),
+            ProjectValidator::id($projectId),
+            $data['name'],
+        );
+
         return response()->noContent(501);
     }
 
-    public function deleteProject(Request $request, int $projectId): Response
+    public function deleteProject(Request $request, string $projectId): Response
     {
+        $this->service->deleteProject(
+            (int) $request->user()->getKey(),
+            ProjectValidator::id($projectId),
+        );
+
         return response()->noContent(501);
     }
 
-    public function addMember(Request $request, int $projectId, int $userId): Response
+    public function addMember(Request $request, string $projectId, string $userId): Response
     {
+        $this->service->addMember(
+            (int) $request->user()->getKey(),
+            ProjectValidator::id($projectId),
+            UserValidator::id($userId),
+        );
+
         return response()->noContent(501);
     }
 
-    public function removeMember(Request $request, int $projectId, int $userId): Response
+    public function removeMember(Request $request, string $projectId, string $userId): Response
     {
+        $this->service->removeMember(
+            (int) $request->user()->getKey(),
+            ProjectValidator::id($projectId),
+            UserValidator::id($userId),
+        );
+
         return response()->noContent(501);
     }
 }
