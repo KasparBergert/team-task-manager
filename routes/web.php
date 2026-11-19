@@ -5,6 +5,7 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TaskController;
 use Illuminate\Support\Facades\Route;
 
+// Display the public welcome page.
 Route::get('/', function () {
     return view('welcome');
 });
@@ -16,9 +17,13 @@ Route::middleware('auth')->group(function () {
     Route::patch('/projects/{projectId}', [ProjectController::class, 'updateProject']);
     Route::delete('/projects/{projectId}', [ProjectController::class, 'deleteProject']);
 
+    // Invite someone to join the project.
     Route::post('/projects/{projectId}/invitations', [InvitationController::class, 'inviteMember']);
+    // Join the project using an invitation token.
     Route::post('/invitations/{token}/accept', [InvitationController::class, 'acceptInvitation']);
+    // Grant project membership to the specified user.
     Route::put('/projects/{projectId}/members/{userId}', [ProjectController::class, 'addMember']);
+    // Revoke the specified user's project membership.
     Route::delete('/projects/{projectId}/members/{userId}', [ProjectController::class, 'removeMember']);
 
     Route::post('/projects/{projectId}/tasks', [TaskController::class, 'createTask']);
@@ -27,6 +32,8 @@ Route::middleware('auth')->group(function () {
     Route::patch('/tasks/{taskId}', [TaskController::class, 'updateTask']);
     Route::delete('/tasks/{taskId}', [TaskController::class, 'deleteTask']);
 
+    // List changes recorded for this task.
     Route::get('/tasks/{taskId}/activity', [TaskController::class, 'listTaskActivity']);
+    // List notifications for the signed-in user.
     Route::get('/me/notifications', [ProjectController::class, 'listNotifications']);
 });
