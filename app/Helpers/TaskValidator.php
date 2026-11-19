@@ -16,7 +16,7 @@ class TaskValidator
         ];
 
         if (! $creating) {
-            $rules['assigneeId'] = ['sometimes', 'nullable', 'integer', 'min:1'];
+            $rules['assigneeId'] = ['sometimes', 'required', 'integer', 'min:1'];
         }
 
         return $rules;

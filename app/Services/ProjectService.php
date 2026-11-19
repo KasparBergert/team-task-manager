@@ -2,19 +2,68 @@
 
 namespace App\Services;
 
+use App\Models\Project;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
+
 class ProjectService
 {
-    public function listProjects(int $actorId): void {}
+    private function projectsFor(int $actorId): Builder
+    {
+        return Project::query()->whereHas('members', fn (Builder $members) => $members->whereKey($actorId));
+    }
 
-    public function createProject(int $actorId, string $name): void {}
+    public function showProjects(int $actorId): Collection
+    {
+        return $this->projectsFor($actorId)->orderBy('id')->get();
+    }
 
-    public function showProject(int $actorId, int $projectId): void {}
+    public function createProject(int $actorId, string $name): Project
+    {
+        return DB::transaction(function () use ($actorId, $name) {
+            $user = User::query()->lockForUpdate()->findOrFail($actorId);
 
-    public function updateProject(int $actorId, int $projectId, string $name): void {}
+            $project = new Project;
+            $project->name = $name;
+            $project->save();
+            $project->addMember($user->getKey());
 
-    public function deleteProject(int $actorId, int $projectId): void {}
+            return $project;
+        });
+    }
 
-    public function addMember(int $actorId, int $projectId, int $userId): void {}
+    public function requireMembership(int $actorId, int $projectId): Project
+    {
+        return $this->projectsFor($actorId)->findOrFail($projectId);
+    }
 
-    public function removeMember(int $actorId, int $projectId, int $userId): void {}
+    public function updateProject(int $actorId, int $projectId, string $name): Project
+    {
+        $project = $this->requireMembership($actorId, $projectId);
+        $project->name = $name;
+        $project->save();
+
+        return $project;
+    }
+
+    public function deleteProject(int $actorId, int $projectId): void
+    {
+        $this->requireMembership($actorId, $projectId)->delete();
+    }
+
+    public function addMember(int $actorId, int $projectId, int $userId): void
+    {
+        DB::transaction(function () use ($actorId, $projectId, $userId) {
+            $project = $this->requireMembership($actorId, $projectId);
+            $user = User::query()->lockForUpdate()->findOrFail($userId);
+            $project->addMember($user->getKey());
+        }, attempts: 3);
+    }
+
+    public function removeMember(int $actorId, int $projectId, int $userId): void
+    {
+        $this->requireMembership($actorId, $projectId);
+    }
 }

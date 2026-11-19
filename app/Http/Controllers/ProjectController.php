@@ -13,48 +13,38 @@ class ProjectController extends Controller
 {
     public function __construct(private readonly ProjectService $service) {}
 
-    public function listProjects(Request $request): Response
+    public function showProjects(Request $request): Response
     {
-        $this->service->listProjects(
+        $projects = $this->service->showProjects(
             (int) $request->user()->getKey(),
         );
 
-        return response()->noContent(501);
+        return response($projects);
     }
 
     public function createProject(Request $request): Response
     {
         $data = $request->validate(['name' => ['required', 'string', 'max:255']]);
 
-        $this->service->createProject(
+        $project = $this->service->createProject(
             (int) $request->user()->getKey(),
             $data['name'],
         );
 
-        return response()->noContent(501);
-    }
-
-    public function showProject(Request $request, string $projectId): Response
-    {
-        $this->service->showProject(
-            (int) $request->user()->getKey(),
-            ProjectValidator::id($projectId),
-        );
-
-        return response()->noContent(501);
+        return response($project, 201);
     }
 
     public function updateProject(Request $request, string $projectId): Response
     {
         $data = $request->validate(['name' => ['required', 'string', 'max:255']]);
 
-        $this->service->updateProject(
+        $project = $this->service->updateProject(
             (int) $request->user()->getKey(),
             ProjectValidator::id($projectId),
             $data['name'],
         );
 
-        return response()->noContent(501);
+        return response($project);
     }
 
     public function deleteProject(Request $request, string $projectId): Response
@@ -64,7 +54,7 @@ class ProjectController extends Controller
             ProjectValidator::id($projectId),
         );
 
-        return response()->noContent(501);
+        return response()->noContent();
     }
 
     public function addMember(Request $request, string $projectId, string $userId): Response
@@ -75,7 +65,7 @@ class ProjectController extends Controller
             UserValidator::id($userId),
         );
 
-        return response()->noContent(501);
+        return response()->noContent();
     }
 
     public function removeMember(Request $request, string $projectId, string $userId): Response

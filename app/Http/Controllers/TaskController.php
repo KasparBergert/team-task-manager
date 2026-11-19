@@ -16,72 +16,77 @@ class TaskController extends Controller
     {
         $data = $request->validate(TaskValidator::fieldRules(creating: true));
 
-        $this->service->createTask(
+        $task = $this->service->createTask(
             (int) $request->user()->getKey(),
             ProjectValidator::id($projectId),
             $data,
         );
 
-        return response()->noContent(501);
+        return response($task, 201);
     }
 
     public function listTasks(Request $request, string $projectId): Response
     {
         $filters = $request->validate([
             'q' => ['sometimes', 'string'],
+            // the status values should be some shraed enum inside the migration and here.
             'status' => ['sometimes', 'in:not_started,in_progress,completed'],
         ]);
 
-        $this->service->listTasks(
+        $tasks = $this->service->listTasks(
             (int) $request->user()->getKey(),
             ProjectValidator::id($projectId),
             $filters,
         );
 
-        return response()->noContent(501);
+        return response($tasks);
     }
 
-    public function showTask(Request $request, string $taskId): Response
+    public function showTask(Request $request, string $projectId, string $taskId): Response
     {
-        $this->service->showTask(
+        $task = $this->service->showTask(
             (int) $request->user()->getKey(),
+            ProjectValidator::id($projectId),
             TaskValidator::id($taskId),
         );
 
-        return response()->noContent(501);
+        return response($task);
     }
 
-    public function updateTask(Request $request, string $taskId): Response
+    public function updateTask(Request $request, string $projectId, string $taskId): Response
     {
         $data = $request->validate(TaskValidator::fieldRules(creating: false));
         if (isset($data['assigneeId'])) {
             $data['assigneeId'] = (int) $data['assigneeId'];
         }
 
-        $this->service->updateTask(
+        $task = $this->service->updateTask(
             (int) $request->user()->getKey(),
+            ProjectValidator::id($projectId),
             TaskValidator::id($taskId),
             $data,
         );
 
-        return response()->noContent(501);
+        return response($task);
     }
 
-    public function deleteTask(Request $request, string $taskId): Response
+    public function deleteTask(Request $request, string $projectId, string $taskId): Response
     {
         $this->service->deleteTask(
             (int) $request->user()->getKey(),
+            ProjectValidator::id($projectId),
             TaskValidator::id($taskId),
         );
 
-        return response()->noContent(501);
+        return response()->noContent();
     }
 
     // Audit log of changes to the task.
-    public function listTaskActivity(Request $request, string $taskId): Response
+    public function listTaskActivity(Request $request, string $projectId, string $taskId): Response
     {
         $this->service->listTaskActivity(
             (int) $request->user()->getKey(),
+            ProjectValidator::id($projectId),
             TaskValidator::id($taskId),
         );
 
