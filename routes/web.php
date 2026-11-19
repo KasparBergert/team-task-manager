@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\InvitationController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\TaskController;
 use Illuminate\Support\Facades\Route;
@@ -17,10 +16,6 @@ Route::middleware('auth')->group(function () {
     Route::patch('/projects/{projectId}', [ProjectController::class, 'updateProject']);
     Route::delete('/projects/{projectId}', [ProjectController::class, 'deleteProject']);
 
-    // Invite someone to join the project.
-    Route::post('/projects/{projectId}/invitations', [InvitationController::class, 'inviteMember']);
-    // Join the project using an invitation token.
-    Route::post('/invitations/{token}/accept', [InvitationController::class, 'acceptInvitation']);
     // Grant project membership to the specified user.
     Route::put('/projects/{projectId}/members/{userId}', [ProjectController::class, 'addMember']);
     // Revoke the specified user's project membership.
