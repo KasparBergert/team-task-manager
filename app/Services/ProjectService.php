@@ -39,9 +39,14 @@ class ProjectService
         return $this->projectsFor($actorId)->findOrFail($projectId);
     }
 
+    public function requireOwnership(int $actorId, int $projectId): Project
+    {
+        return $this->projectsFor($actorId)->findOrFail($projectId);
+    }
+
     public function updateProject(int $actorId, int $projectId, string $name): Project
     {
-        $project = $this->requireMembership($actorId, $projectId);
+        $project = $this->requireOwnership($actorId, $projectId);
         $project->name = $name;
         $project->save();
 
@@ -50,7 +55,7 @@ class ProjectService
 
     public function deleteProject(int $actorId, int $projectId): void
     {
-        $this->requireMembership($actorId, $projectId)->delete();
+        $this->requireOwnership($actorId, $projectId)->delete();
     }
 
     public function addMember(int $actorId, int $projectId, int $userId): void
