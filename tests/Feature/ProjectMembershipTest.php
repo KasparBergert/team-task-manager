@@ -141,6 +141,24 @@ test('an outsider cannot remove a project member', function () {
     $this->actingAs($creator)->getJson("/projects/{$projectId}/tasks")->assertOk();
 });
 
+test('returns 403 when a read-only member tries to change project membership', function (string $method, bool $targetIsMember) {
+    $actor = User::factory()->create();
+    $target = User::factory()->create();
+    $project = Project::forceCreate(['name' => 'Shared']);
+    $project->addMember($actor->id);
+    if ($targetIsMember) {
+        $project->addMember($target->id);
+    }
+
+    $this->actingAs($actor)->json($method, "/projects/{$project->id}/members/{$target->id}")->assertForbidden();
+
+    expect($project->members()->whereKey($target->id)->exists())->toBe($targetIsMember);
+    expect($target->permissions($project->id))->toBe($targetIsMember ? ['read'] : []);
+})->with([
+    'add member' => ['PUT', false],
+    'remove member' => ['DELETE', true],
+]);
+
 test('a guest cannot change project membership', function (string $method) {
     $this->json($method, '/projects/1/members/2')->assertUnauthorized();
 })->with(['PUT', 'DELETE']);

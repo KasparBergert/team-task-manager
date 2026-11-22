@@ -2,6 +2,7 @@
 
 use App\Models\Project;
 use App\Models\User;
+use App\Services\PermissionsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -30,10 +31,10 @@ test('shows every project the signed-in user belongs to after creating a second 
         ->assertJsonFragment(['name' => 'Second project']);
 });
 
-test('renames a project', function () {
+test('renames a project with the update scope', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $member = User::factory()->create();
-    $project->members()->attach($member);
+    $project->addMember($member->id, ['update']);
 
     $this->actingAs($member)->patchJson("/projects/{$project->id}", ['name' => 'Spring launch'])
         ->assertSuccessful();
@@ -41,10 +42,10 @@ test('renames a project', function () {
     $this->assertDatabaseHas('projects', ['id' => $project->id, 'name' => 'Spring launch']);
 });
 
-test('deletes a project', function () {
+test('deletes a project with the delete scope', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $member = User::factory()->create();
-    $project->members()->attach($member);
+    $project->addMember($member->id, ['delete']);
 
     $this->actingAs($member)->deleteJson("/projects/{$project->id}")
         ->assertSuccessful();
@@ -52,11 +53,11 @@ test('deletes a project', function () {
     $this->assertModelMissing($project);
 });
 
-test('a member can add another user to a project and repeat the request', function () {
+test('a member with the update scope can add another user and repeat the request', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $member = User::factory()->create();
     $newMember = User::factory()->create();
-    $project->members()->attach($member);
+    $project->addMember($member->id, ['update']);
 
     $url = "/projects/{$project->id}/members/{$newMember->id}";
     $this->actingAs($member)->putJson($url)->assertNoContent();
@@ -79,10 +80,37 @@ test('returns 404 when a non-member tries to add themselves', function () {
 test('returns 404 when the requested member does not exist', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $member = User::factory()->create();
-    $project->members()->attach($member);
+    $project->addMember($member->id, ['update']);
     $missingId = $member->id + 1;
 
     $this->actingAs($member)->putJson("/projects/{$project->id}/members/{$missingId}")->assertNotFound();
 
     $this->assertDatabaseMissing('project_user', ['project_id' => $project->id, 'user_id' => $missingId]);
+});
+
+test('explains a 403 when the required scope exists only on another project', function (string $method, string $scope, string $otherScope, string $action) {
+    $member = User::factory()->create();
+    $project = Project::forceCreate(['name' => 'Shared']);
+    $otherProject = Project::forceCreate(['name' => 'Other']);
+    $project->addMember($member->id, [$otherScope]);
+    $otherProject->addMember($member->id, [$scope]);
+
+    $this->actingAs($member)->json($method, "/projects/{$project->id}", ['name' => 'Changed'])
+        ->assertForbidden()
+        ->assertJsonPath('message', "You need the '{$scope}' scope to {$action}.");
+
+    $this->assertDatabaseHas('projects', ['id' => $project->id, 'name' => 'Shared']);
+})->with([
+    'rename requires update' => ['PATCH', 'update', 'delete', 'rename this project'],
+    'delete requires delete' => ['DELETE', 'delete', 'update', 'delete this project'],
+]);
+
+test('returns 404 when a non-member holds the required scope', function () {
+    $outsider = User::factory()->create();
+    $project = Project::forceCreate(['name' => 'Private']);
+    app(PermissionsService::class)->addScopes(['user_id' => $outsider->id, 'project_id' => $project->id], ['update']);
+
+    $this->actingAs($outsider)->patchJson("/projects/{$project->id}", ['name' => 'Changed'])->assertNotFound();
+
+    $this->assertDatabaseHas('projects', ['id' => $project->id, 'name' => 'Private']);
 });

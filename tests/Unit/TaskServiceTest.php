@@ -13,7 +13,7 @@ uses(TestCase::class, LazilyRefreshDatabase::class);
 
 function fillTaskForTest(Task $task, Project $project, array $attributes): void
 {
-    $service = new TaskService(new ProjectService);
+    $service = new TaskService(app(ProjectService::class));
     (new ReflectionMethod(TaskService::class, 'fillTask'))->invoke($service, $task, $project, $attributes);
 }
 
