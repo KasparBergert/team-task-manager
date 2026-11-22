@@ -28,7 +28,7 @@ class ProjectService
             $project = new Project;
             $project->name = $name;
             $project->save();
-            $project->addMember($user->getKey());
+            $project->addMember($user->getKey(), config('permissions.scopes'));
 
             return $project;
         });
@@ -60,15 +60,21 @@ class ProjectService
 
     public function addMember(int $actorId, int $projectId, int $userId): void
     {
-        DB::transaction(function () use ($actorId, $projectId, $userId) {
+        DB::transaction(function () use ($actorId, $projectId, $userId): void {
             $project = $this->requireMembership($actorId, $projectId);
             $user = User::query()->lockForUpdate()->findOrFail($userId);
+
             $project->addMember($user->getKey());
         }, attempts: 3);
     }
 
     public function removeMember(int $actorId, int $projectId, int $userId): void
     {
-        $this->requireMembership($actorId, $projectId);
+        DB::transaction(function () use ($actorId, $projectId, $userId): void {
+            $project = $this->requireMembership($actorId, $projectId);
+            $user = User::query()->lockForUpdate()->findOrFail($userId);
+
+            $project->removeMember($user->getKey());
+        }, attempts: 3);
     }
 }
