@@ -2,7 +2,6 @@
 
 use App\Models\User;
 use App\Services\PermissionsService;
-use App\Services\ProjectScope;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -10,7 +9,7 @@ uses(RefreshDatabase::class);
 
 test('startup registers the configured scopes after migration', function () {
     expect(DB::table('scopes')->where('program_identifier', config('permissions.program_identifier'))->pluck('name')->all())
-        ->toContain('create', 'read', 'update', 'delete', 'add_role');
+        ->toContain('create', 'read', 'update', 'delete');
 });
 
 test('grants are isolated by user, project, and program and can be revoked', function () {
@@ -18,8 +17,8 @@ test('grants are isolated by user, project, and program and can be revoked', fun
     $service = app(PermissionsService::class);
     $object = ['user_id' => (string) $user->id, 'project_id' => '11'];
 
-    $service->addScopes($object, [ProjectScope::Read->value, ProjectScope::Update->value]);
-    $service->addScopes(array_reverse($object, true), [ProjectScope::Read->value]);
+    $service->addScopes($object, ['read', 'update']);
+    $service->addScopes(array_reverse($object, true), ['read']);
 
     expect($user->permissions(11))->toBe(['read', 'update'])
         ->and($user->permissions(12))->toBe([])

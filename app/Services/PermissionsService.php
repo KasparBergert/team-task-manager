@@ -7,9 +7,7 @@ use InvalidArgumentException;
 
 class PermissionsService
 {
-    public function __construct(private readonly string $programIdentifier) {
-        //scopes are created here   
-    }
+    public function __construct(private readonly string $programIdentifier) {}
     
     /* used to create an element with scopes */
     public function createIdentifier(array $object): string
