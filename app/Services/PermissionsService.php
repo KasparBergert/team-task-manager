@@ -4,57 +4,67 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use stdClass;
 
 class PermissionsService
 {
     public function __construct(private readonly string $programIdentifier) {}
-    
-    /* used to create an element with scopes */
-    public function createIdentifier(array $object): string
+
+    public function createIdentifier(array $permissionIdentifierKey): string
     {
-        /**
-         * since order and exact letters given to the hash function matters -
-         * ordering and only 1 type allowed for keys and values are allowed
-         * e.g. if values are allowed to be numbers and strings which represent numbers,
-         * then the hash will not be the same, but its expected to.         
-         */
-        foreach ($object as $key => $value) {
-            if (! is_string($key)) {
-                throw new InvalidArgumentException('Identifier keys must be strings.');
+        $normalize = static function (array|stdClass $nestedFields, int $depth = 0) use (&$normalize): array {
+            if ($depth >= 512) {
+                throw new InvalidArgumentException('Identifier nesting is too deep.');
             }
 
-            if (! is_scalar($value)) {
-                throw new InvalidArgumentException('Identifier values must be scalar.');
+            $fields = (array) $nestedFields;
+            foreach ($fields as $key => $value) {
+                if (! is_string($key)) {
+                    throw new InvalidArgumentException('Identifier keys must be strings.');
+                }
+
+                if (is_array($value) || $value instanceof stdClass) {
+                    $fields[$key] = (object) $normalize($value, $depth + 1);
+                } elseif (is_scalar($value)) {
+                    $fields[$key] = (string) $value;
+                } else {
+                    throw new InvalidArgumentException('Identifier values must be scalars or objects with named fields.');
+                }
             }
 
-            $object[$key] = (string) $value;
+            ksort($fields, SORT_STRING);
+
+            return $fields;
+        };
+
+        $identifier = json_encode([
+            'program_identifier' => $this->programIdentifier,
+            'object' => $normalize($permissionIdentifierKey),
+        ], JSON_THROW_ON_ERROR);
+
+        // keep in sync with the migration
+        if (mb_strlen($identifier) > 700) {
+            throw new InvalidArgumentException('Identifier exceeds the maximum length of 700 characters.');
         }
-        ksort($object, SORT_STRING);
 
-        //'2' and 2 are converted to '2'
-        $data = json_encode(
-            [$this->programIdentifier, $object],
-            JSON_THROW_ON_ERROR,
-        );
-
-        return hash('sha256', $data);
+        return $identifier;
     }
 
-    public function getScopesFor(array $object): array
+    public function getScopes(array $permissionIdentifierKey): array
     {
         return DB::table('scopes')
             ->join('scope_grants', 'scopes.id', '=', 'scope_grants.scope_id')
             ->where('scopes.program_identifier', $this->programIdentifier)
-            ->where('scope_grants.object_hash', $this->createIdentifier($object))
+            ->where('scope_grants.identifier', $this->createIdentifier($permissionIdentifierKey))
             ->orderBy('scopes.name')
             ->pluck('scopes.name')->all();
     }
 
-    public function addScopes(array $object, array $scope_names): void
+    public function addScopes(array $permissionIdentifierKey, array $scope_names): void
     {
         $scope_names = array_values(array_unique($scope_names));
 
-        DB::transaction(function () use ($object, $scope_names): void {
+        DB::transaction(function () use ($permissionIdentifierKey, $scope_names): void {
             $ids = DB::table('scopes')->where('program_identifier', $this->programIdentifier)
                 ->whereIn('name', $scope_names)->pluck('id')->all();
 
@@ -62,21 +72,79 @@ class PermissionsService
                 throw new InvalidArgumentException('All scopes must be registered for this program.');
             }
 
-            $hash = $this->createIdentifier($object);
+            if ($ids === []) {
+                return;
+            }
+
+            $identifier = $this->createIdentifier($permissionIdentifierKey);
             foreach ($ids as $id) {
-                DB::table('scope_grants')->insertOrIgnore(['object_hash' => $hash, 'scope_id' => $id]);
+                DB::table('scope_grants')->insertOrIgnore(['identifier' => $identifier, 'scope_id' => $id]);
             }
         });
     }
 
-    public function removeScopes(array $object, array $scope_names): void
+    public function removeScopes(array $permissionIdentifierKey, array $scope_names): void
     {
-        DB::table('scope_grants')->where('object_hash', $this->createIdentifier($object))
+        DB::table('scope_grants')->where('identifier', $this->createIdentifier($permissionIdentifierKey))
             ->whereIn('scope_id',
-                // find scopes which are to be removed
                 DB::table('scopes')->select('id')
                     ->where('program_identifier', $this->programIdentifier)
                     ->whereIn('name', $scope_names)
             )->delete();
+    }
+
+    /**
+     * Delete scope grants in this program when all supplied identifier fields match.
+     *
+     * For example, ['user_id' => 0, 'project_id' => 0] matches
+     * ['user_id' => 0, 'project_id' => 0, 'other_id' => 2].
+     * A different user ID or project ID keeps the grant in place.
+     * Nested fields match recursively at the supplied paths. Stored objects may have extra fields.
+     * An empty nested filter matches only an empty object.
+     *
+     * usually used when e.g. user or project are deleted, then the scopes also require deletion
+     *
+     * @param  array<string, mixed>  $permissionIdentifierKey
+     *
+     * @throws InvalidArgumentException
+     */
+    public function deleteScopes(array $permissionIdentifierKey): void
+    {
+        if ($permissionIdentifierKey === []) {
+            throw new InvalidArgumentException('At least one identifier field is required.');
+        }
+
+        $pattern = json_decode($this->createIdentifier($permissionIdentifierKey), true, flags: JSON_THROW_ON_ERROR)['object'];
+        $programGrants = DB::table('scope_grants')->whereIn('scope_id',
+            DB::table('scopes')->select('id')->where('program_identifier', $this->programIdentifier)
+        );
+        $identifiers = (clone $programGrants)->select('identifier')->distinct()->lazyById(column: 'identifier');
+
+        $identifiers->each(function (object $row) use ($pattern, $programGrants): void {
+            $identifier = json_decode($row->identifier, true, flags: JSON_THROW_ON_ERROR);
+            if ($this->matchesIdentifierPattern($pattern, $identifier['object'] ?? null)) {
+                (clone $programGrants)->where('identifier', $row->identifier)->delete();
+            }
+        });
+    }
+
+    // makes sure that the db value includes at least all values the $pattern holds.
+    private function matchesIdentifierPattern(mixed $pattern, mixed $stored): bool
+    {
+        if (! is_array($pattern) || $pattern === []) {
+            return $stored === $pattern;
+        }
+
+        if (! is_array($stored)) {
+            return false;
+        }
+
+        foreach ($pattern as $key => $value) {
+            if (! array_key_exists($key, $stored) || ! $this->matchesIdentifierPattern($value, $stored[$key])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

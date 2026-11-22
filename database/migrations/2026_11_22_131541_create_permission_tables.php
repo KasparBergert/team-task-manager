@@ -16,9 +16,14 @@ return new class extends Migration
         });
 
         Schema::create('scope_grants', function (Blueprint $table) {
-            $table->char('object_hash', 64);
+            $identifier = $table->string('identifier', 700);
+
+            if (in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+                $identifier->charset('utf8mb4')->collation('utf8mb4_bin');
+            }
+
             $table->foreignId('scope_id')->constrained('scopes')->cascadeOnDelete();
-            $table->primary(['object_hash', 'scope_id']);
+            $table->primary(['identifier', 'scope_id']);
         });
     }
 
