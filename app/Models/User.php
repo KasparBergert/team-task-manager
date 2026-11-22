@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\PermissionsService;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -21,6 +22,14 @@ class User extends Authenticatable
     public function projects(): BelongsToMany
     {
         return $this->belongsToMany(Project::class);
+    }
+
+    public function permissions(int $projectId): array
+    {
+        return app(PermissionsService::class)->getScopes([
+            'user_id' => (string) $this->getKey(),
+            'project_id' => (string) $projectId,
+        ]);
     }
 
     /**
