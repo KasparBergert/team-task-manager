@@ -28,8 +28,7 @@ class TaskController extends Controller
     public function listTasks(Request $request, string $projectId): Response
     {
         $filters = $request->validate([
-            'q' => ['sometimes', 'string'],
-            // the status values should be some shraed enum inside the migration and here.
+            'q' => ['sometimes', 'string'],            
             'status' => ['sometimes', 'in:not_started,in_progress,completed'],
         ]);
 

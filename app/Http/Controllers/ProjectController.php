@@ -45,8 +45,7 @@ class ProjectController extends Controller
         );
 
         return response($project);
-    }
-
+    }    
     public function deleteProject(Request $request, string $projectId): Response
     {
         $this->service->deleteProject(
