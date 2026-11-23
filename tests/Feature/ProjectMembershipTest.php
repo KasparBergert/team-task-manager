@@ -137,13 +137,13 @@ test('adding a member makes the project visible and grants access to its tasks',
     $member = User::factory()->create();
     $projectId = $this->actingAs($creator)->postJson('/projects', ['name' => 'Shared'])->assertCreated()->json('id');
     $tasks = "/projects/{$projectId}/tasks";
+    $taskId = $this->postJson($tasks, ['title' => 'Shared task'])->assertCreated()->json('id');
 
     $this->actingAs($member)->getJson($tasks)->assertNotFound();
     $this->actingAs($creator)->putJson("/projects/{$projectId}/members/{$member->id}")->assertNoContent();
 
     $this->actingAs($member)->getJson('/projects')->assertOk()->assertJsonFragment(['id' => $projectId]);
-    $taskId = $this->postJson($tasks, ['title' => 'Shared task'])->assertCreated()->json('id');
-    $this->actingAs($creator)->getJson("{$tasks}/{$taskId}")->assertOk()->assertJsonPath('assigned_to', $member->id);
+    $this->getJson("{$tasks}/{$taskId}")->assertOk()->assertJsonPath('id', $taskId);
 });
 
 test('removing a member revokes access to just the selected project', function () {

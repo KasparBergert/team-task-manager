@@ -14,7 +14,7 @@ class TaskService
 
     public function createTask(int $actorId, int $projectId, array $attributes): Task
     {
-        $project = $this->projects->requireMembership($actorId, $projectId);
+        $project = $this->projects->requireScope($actorId, $projectId, 'create', 'create a task in this project');
         $task = $project->tasks()->make();
         $task->assigned_to = $actorId;
         $this->fillTask($task, $project, $attributes);
@@ -25,7 +25,8 @@ class TaskService
 
     public function listTasks(int $actorId, int $projectId, array $filters): Collection
     {
-        $tasks = $this->projects->requireMembership($actorId, $projectId)->tasks();
+        $project = $this->projects->requireScope($actorId, $projectId, 'read', 'list tasks in this project');
+        $tasks = $project->tasks();
 
         if (isset($filters['status'])) {
             $tasks->where('status', $filters['status']);
@@ -43,12 +44,14 @@ class TaskService
 
     public function showTask(int $actorId, int $projectId, int $taskId): Task
     {
-        return $this->projects->requireMembership($actorId, $projectId)->tasks()->findOrFail($taskId);
+        $project = $this->projects->requireScope($actorId, $projectId, 'read', 'view a task in this project');
+
+        return $project->tasks()->findOrFail($taskId);
     }
 
     public function updateTask(int $actorId, int $projectId, int $taskId, array $attributes): Task
     {
-        $project = $this->projects->requireMembership($actorId, $projectId);
+        $project = $this->projects->requireScope($actorId, $projectId, 'update', 'update a task in this project');
         $task = $project->tasks()->findOrFail($taskId);
 
         $this->fillTask($task, $project, $attributes);
@@ -84,7 +87,8 @@ class TaskService
 
     public function deleteTask(int $actorId, int $projectId, int $taskId): void
     {
-        $this->showTask($actorId, $projectId, $taskId)->delete();
+        $project = $this->projects->requireScope($actorId, $projectId, 'delete', 'delete a task in this project');
+        $project->tasks()->findOrFail($taskId)->delete();
     }
 
     public function listTaskActivity(int $actorId, int $projectId, int $taskId): void

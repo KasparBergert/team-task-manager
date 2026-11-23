@@ -42,7 +42,7 @@ class ProjectService
         return $this->projectsFor($actorId)->findOrFail($projectId);
     }
 
-    private function requireScope(int $actorId, int $projectId, string $scope, string $action): Project
+    public function requireScope(int $actorId, int $projectId, string $scope, string $action): Project
     {
         $project = $this->requireMembership($actorId, $projectId);
         $scopes = $this->permissions->getScopes(['user_id' => $actorId, 'project_id' => $projectId]);

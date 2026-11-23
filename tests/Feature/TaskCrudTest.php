@@ -3,14 +3,15 @@
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\PermissionsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-test('creates a task for the signed-in project member', function () {
+test('creates a task for a member with the create scope', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $member = User::factory()->create();
-    $project->members()->attach($member);
+    $project->addMember($member->id, ['create']);
 
     $this->actingAs($member)->postJson("/projects/{$project->id}/tasks", ['title' => 'Draft the proposal'])
         ->assertSuccessful();
@@ -22,10 +23,10 @@ test('creates a task for the signed-in project member', function () {
     ]);
 });
 
-test('shows the requested task', function () {
+test('shows the requested task to a member with the read scope', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $member = User::factory()->create();
-    $project->members()->attach($member);
+    $project->addMember($member->id, ['read']);
     $task = Task::forceCreate([
         'project_id' => $project->id,
         'assigned_to' => $member->id,
@@ -37,10 +38,10 @@ test('shows the requested task', function () {
         ->assertJsonFragment(['id' => $task->id, 'title' => $task->title]);
 });
 
-test('marks a task as in progress', function () {
+test('marks a task as in progress for a member with the update scope', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $member = User::factory()->create();
-    $project->members()->attach($member);
+    $project->addMember($member->id, ['update']);
     $task = Task::forceCreate([
         'project_id' => $project->id,
         'assigned_to' => $member->id,
@@ -53,10 +54,10 @@ test('marks a task as in progress', function () {
     $this->assertDatabaseHas('tasks', ['id' => $task->id, 'status' => 'in_progress', 'assigned_to' => $member->id]);
 });
 
-test('deletes a task', function () {
+test('deletes a task for a member with the delete scope', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $member = User::factory()->create();
-    $project->members()->attach($member);
+    $project->addMember($member->id, ['delete']);
     $task = Task::forceCreate([
         'project_id' => $project->id,
         'assigned_to' => $member->id,
@@ -68,6 +69,58 @@ test('deletes a task', function () {
 
     $this->assertModelMissing($task);
 });
+
+test('returns 403 when a read-only member tries to create a task', function () {
+    $project = Project::forceCreate(['name' => 'Website launch']);
+    $member = User::factory()->create();
+    $project->addMember($member->id, ['read']);
+
+    $this->actingAs($member)->postJson("/projects/{$project->id}/tasks", ['title' => 'Draft the proposal'])
+        ->assertForbidden();
+
+    $this->assertDatabaseCount('tasks', 0);
+});
+
+test('returns 403 when a member can update tasks only in another project', function () {
+    $project = Project::forceCreate(['name' => 'Website launch']);
+    $otherProject = Project::forceCreate(['name' => 'Other project']);
+    $member = User::factory()->create();
+    $project->addMember($member->id, ['read']);
+    $otherProject->addMember($member->id, ['update']);
+    $task = Task::forceCreate(['project_id' => $project->id, 'title' => 'Original']);
+
+    $this->actingAs($member)->patchJson("/projects/{$project->id}/tasks/{$task->id}", ['title' => 'Changed'])
+        ->assertForbidden();
+
+    $this->assertDatabaseHas('tasks', ['id' => $task->id, 'title' => 'Original']);
+});
+
+test('returns 403 when a read-only member tries to delete a task', function () {
+    $project = Project::forceCreate(['name' => 'Website launch']);
+    $member = User::factory()->create();
+    $project->addMember($member->id, ['read']);
+    $task = Task::forceCreate(['project_id' => $project->id, 'title' => 'Draft the proposal']);
+
+    $this->actingAs($member)->deleteJson("/projects/{$project->id}/tasks/{$task->id}")
+        ->assertForbidden();
+
+    $this->assertModelExists($task);
+});
+
+test('returns 403 for task reads after the project read scope is revoked', function (string $suffix) {
+    $project = Project::forceCreate(['name' => 'Website launch']);
+    $member = User::factory()->create();
+    $project->addMember($member->id, ['read', 'update']);
+    $task = Task::forceCreate(['project_id' => $project->id, 'title' => 'Draft the proposal']);
+    app(PermissionsService::class)->removeScopes(['user_id' => $member->id, 'project_id' => $project->id], ['read']);
+    $path = '/projects/'.$project->id.'/tasks'.str_replace('{task}', (string) $task->id, $suffix);
+
+    $this->actingAs($member)->getJson($path)->assertForbidden();
+})->with([
+    'task list' => [''],
+    'task details' => ['/{task}'],
+    'task activity' => ['/{task}/activity'],
+]);
 
 test('creates and lists tasks in the selected project', function () {
     $user = User::factory()->create();
@@ -85,7 +138,8 @@ test('returns 404 for a task under the wrong project even when the user belongs 
     $member = User::factory()->create();
     $first = Project::forceCreate(['name' => 'First']);
     $second = Project::forceCreate(['name' => 'Second']);
-    $member->projects()->attach([$first->id, $second->id]);
+    $first->addMember($member->id, ['read', 'update', 'delete']);
+    $second->addMember($member->id, ['read', 'update', 'delete']);
     $task = Task::forceCreate(['project_id' => $second->id, 'title' => 'Original']);
 
     $this->actingAs($member)->json($method, "/projects/{$first->id}/tasks/{$task->id}{$suffix}", ['title' => 'Changed'])
@@ -113,8 +167,9 @@ test('returns 422 when a task assignee only belongs to another project', functio
     $assignee = User::factory()->create();
     $selected = Project::forceCreate(['name' => 'Selected']);
     $other = Project::forceCreate(['name' => 'Other']);
-    $actor->projects()->attach([$selected->id, $other->id]);
-    $assignee->projects()->attach($other);
+    $selected->addMember($actor->id, ['update']);
+    $other->addMember($actor->id, ['update']);
+    $other->addMember($assignee->id);
     $task = Task::forceCreate(['project_id' => $selected->id, 'title' => 'Original', 'assigned_to' => $actor->id]);
 
     $this->actingAs($actor)->patchJson("/projects/{$selected->id}/tasks/{$task->id}", ['assigneeId' => $assignee->id])
@@ -127,7 +182,8 @@ test('assigns the task to an existing project member', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $actor = User::factory()->create();
     $member = User::factory()->create();
-    $project->members()->attach([$actor->id, $member->id]);
+    $project->addMember($actor->id, ['update']);
+    $project->addMember($member->id);
     $task = Task::forceCreate(['project_id' => $project->id, 'title' => 'Draft', 'assigned_to' => $actor->id]);
 
     $this->actingAs($actor)->patchJson("/projects/{$project->id}/tasks/{$task->id}", ['assigneeId' => $member->id])
@@ -139,7 +195,7 @@ test('assigns the task to an existing project member', function () {
 test('rejects the whole task update for a null or nonexistent assignee', function (?int $assigneeId) {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $actor = User::factory()->create();
-    $project->members()->attach($actor);
+    $project->addMember($actor->id, ['update']);
     $task = Task::forceCreate(['project_id' => $project->id, 'title' => 'Draft', 'assigned_to' => $actor->id]);
 
     $this->actingAs($actor)->patchJson("/projects/{$project->id}/tasks/{$task->id}", [
