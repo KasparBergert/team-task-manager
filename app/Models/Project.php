@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class Project extends Model
 {
@@ -38,9 +39,16 @@ class Project extends Model
     public function removeMember(int $userId): void
     {
         $this->getConnection()->transaction(function () use ($userId): void {
-            $this->members()->detach($userId);
+            if ($this->members()->detach($userId) === 0) {
+                $message = User::query()->whereKey($userId)->exists()
+                    ? 'User does not exist in this project.'
+                    : 'User does not exist.';
+
+                throw new NotFoundHttpException($message);
+            }
+
             app(PermissionsService::class)->deleteScopes(['user_id' => $userId, 'project_id' => $this->getKey()]);
-        });
+        }, attempts: 3);
     }
 
     public function tasks(): HasMany

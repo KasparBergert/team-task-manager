@@ -78,11 +78,8 @@ class ProjectService
 
     public function removeMember(int $actorId, int $projectId, int $userId): void
     {
-        DB::transaction(function () use ($actorId, $projectId, $userId): void {
-            $project = $this->requireScope($actorId, $projectId, 'update', 'remove a member from this project');
-            $user = User::query()->lockForUpdate()->findOrFail($userId);
+        $project = $this->requireScope($actorId, $projectId, 'update', 'remove a member from this project');
 
-            $project->removeMember($user->getKey());
-        }, attempts: 3);
+        $project->removeMember($userId);
     }
 }

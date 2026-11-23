@@ -104,6 +104,34 @@ test('adding the same project member twice returns 409 and preserves membership 
     expect($actor->permissions($project->id))->toBe(['update']);
 });
 
+test('removing the same project member twice returns 404 on the second request', function () {
+    $project = Project::forceCreate(['name' => 'Shared']);
+    $actor = User::factory()->create();
+    $member = User::factory()->create();
+    $project->addMember($actor->id, ['update']);
+    $project->addMember($member->id);
+    $url = "/projects/{$project->id}/members/{$member->id}";
+
+    $this->actingAs($actor)->deleteJson($url)->assertNoContent();
+    $this->deleteJson($url)->assertNotFound()
+        ->assertJsonPath('message', 'User does not exist in this project.');
+
+    expect($project->members()->pluck('users.id')->all())->toBe([$actor->id]);
+    expect($member->permissions($project->id))->toBeEmpty();
+    expect($actor->permissions($project->id))->toBe(['update']);
+});
+
+test('removing a user who does not exist returns a clear 404', function () {
+    $project = Project::forceCreate(['name' => 'Shared']);
+    $actor = User::factory()->create();
+    $project->addMember($actor->id, ['update']);
+    $missingUserId = $actor->id + 1;
+
+    $this->actingAs($actor)->deleteJson("/projects/{$project->id}/members/{$missingUserId}")
+        ->assertNotFound()
+        ->assertJsonPath('message', 'User does not exist.');
+});
+
 test('adding a member makes the project visible and grants access to its tasks', function () {
     $creator = User::factory()->create();
     $member = User::factory()->create();
