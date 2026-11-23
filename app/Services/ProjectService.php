@@ -70,12 +70,10 @@ class ProjectService
 
     public function addMember(int $actorId, int $projectId, int $userId): void
     {
-        DB::transaction(function () use ($actorId, $projectId, $userId): void {
-            $project = $this->requireScope($actorId, $projectId, 'update', 'add a member to this project');
-            $user = User::query()->lockForUpdate()->findOrFail($userId);
+        $project = $this->requireScope($actorId, $projectId, 'update', 'add a member to this project');
+        User::query()->findOrFail($userId);
 
-            $project->addMember($user->getKey(), ['read']);
-        }, attempts: 3);
+        $project->addMember($userId);
     }
 
     public function removeMember(int $actorId, int $projectId, int $userId): void

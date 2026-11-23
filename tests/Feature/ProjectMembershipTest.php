@@ -5,6 +5,7 @@ use App\Models\User;
 use App\Services\PermissionsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 uses(RefreshDatabase::class);
 
@@ -12,10 +13,19 @@ test('adding a member directly on the model grants read access', function () {
     $project = Project::forceCreate(['name' => 'Shared']);
     $member = User::factory()->create();
 
-    expect($project->addMember($member->id))->toBeTrue();
+    $project->addMember($member->id);
 
     $this->assertDatabaseHas('project_user', ['user_id' => $member->id, 'project_id' => $project->id]);
     expect($member->permissions($project->id))->toBe(['read']);
+});
+
+test('adding an existing member directly raises a membership conflict', function () {
+    $project = Project::forceCreate(['name' => 'Shared']);
+    $member = User::factory()->create();
+    $project->addMember($member->id);
+
+    expect(fn () => $project->addMember($member->id))
+        ->toThrow(ConflictHttpException::class, 'User is already a member of this project.');
 });
 
 test('removing a member directly on the model clears their project grants', function () {
@@ -78,6 +88,22 @@ test('project creation and membership changes maintain project scope grants', fu
     expect($permissions->getScopes($creatorKey))->toBe(['create', 'delete', 'read', 'update']);
 });
 
+test('adding the same project member twice returns 409 and preserves membership and scopes', function () {
+    $project = Project::forceCreate(['name' => 'Shared']);
+    $actor = User::factory()->create();
+    $member = User::factory()->create();
+    $project->addMember($actor->id, ['update']);
+    $url = "/projects/{$project->id}/members/{$member->id}";
+
+    $this->actingAs($actor)->putJson($url)->assertNoContent();
+    $this->putJson($url)->assertConflict()
+        ->assertJsonPath('message', 'User is already a member of this project.');
+
+    expect($project->members()->orderBy('users.id')->pluck('users.id')->all())->toBe([$actor->id, $member->id]);
+    expect($member->permissions($project->id))->toBe(['read']);
+    expect($actor->permissions($project->id))->toBe(['update']);
+});
+
 test('adding a member makes the project visible and grants access to its tasks', function () {
     $creator = User::factory()->create();
     $member = User::factory()->create();
@@ -126,7 +152,7 @@ test('adding an existing member preserves their explicitly revoked scopes', func
     $memberKey = ['user_id' => $member->id, 'project_id' => $projectId];
     $permissions->removeScopes($memberKey, ['read']);
 
-    $this->putJson($membership)->assertNoContent();
+    $this->putJson($membership)->assertConflict();
 
     expect($permissions->getScopes($memberKey))->toBe([]);
 });

@@ -6,6 +6,8 @@ use App\Services\PermissionsService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class Project extends Model
 {
@@ -17,21 +19,20 @@ class Project extends Model
     /**
      * @param  list<string>  $scopeNames
      */
-    public function addMember(int $userId, array $scopeNames = ['read']): bool
+    public function addMember(int $userId, array $scopeNames = ['read']): void
     {
-        return $this->getConnection()->transaction(function () use ($userId, $scopeNames): bool {
-            $changes = $this->members()->syncWithoutDetaching([$userId]);
-            if ($changes['attached'] === []) {
-                return false;
+        $this->getConnection()->transaction(function () use ($userId, $scopeNames): void {
+            try {
+                $this->members()->attach($userId);
+            } catch (UniqueConstraintViolationException $exception) {
+                throw new ConflictHttpException('User is already a member of this project.', $exception);
             }
 
             app(PermissionsService::class)->addScopes(
                 ['user_id' => $userId, 'project_id' => $this->getKey()],
                 $scopeNames,
             );
-
-            return true;
-        });
+        }, attempts: 3);
     }
 
     public function removeMember(int $userId): void

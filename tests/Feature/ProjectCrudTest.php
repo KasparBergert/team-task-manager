@@ -53,7 +53,7 @@ test('deletes a project with the delete scope', function () {
     $this->assertModelMissing($project);
 });
 
-test('a member with the update scope can add another user and repeat the request', function () {
+test('a member with the update scope can add another user', function () {
     $project = Project::forceCreate(['name' => 'Website launch']);
     $member = User::factory()->create();
     $newMember = User::factory()->create();
@@ -61,7 +61,6 @@ test('a member with the update scope can add another user and repeat the request
 
     $url = "/projects/{$project->id}/members/{$newMember->id}";
     $this->actingAs($member)->putJson($url)->assertNoContent();
-    $this->putJson($url)->assertNoContent();
 
     $this->assertDatabaseHas('project_user', ['project_id' => $project->id, 'user_id' => $member->id]);
     $this->assertDatabaseHas('project_user', ['project_id' => $project->id, 'user_id' => $newMember->id]);
